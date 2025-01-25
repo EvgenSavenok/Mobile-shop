@@ -22,14 +22,20 @@ import com.example.shop.ui.theme.ShopTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.text.style.TextOverflow
-import com.google.firebase.firestore.firestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 
 class MainActivity : ComponentActivity() {
@@ -39,7 +45,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         auth.addAuthStateListener { firebaseAuth ->
-            if (firebaseAuth.currentUser == null) {
+            if (firebaseAuth.currentUser == null)
+            {
                 setContent {
                     ShopTheme {
                         AuthenticationScreen(auth = auth) { user ->
@@ -144,7 +151,6 @@ class MainActivity : ComponentActivity() {
                 .padding(8.dp),
             elevation = CardDefaults.cardElevation(4.dp)
         ) {
-            // Image(painter = rememberImagePainter(imageUrl), contentDescription = null)
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -189,14 +195,6 @@ class MainActivity : ComponentActivity() {
                     ObjectDetailsScreen(objectId)
                 }
             }
-
-
-//            composable("favorites") { FavoritesScreen(auth) }
-//            composable("profile") { UserProfileScreen(auth) }
-//            composable("objectDetails/{objectId}") { backStackEntry ->
-//                val objectId = backStackEntry.arguments?.getString("objectId") ?: ""
-//                ObjectDetailsScreen(objectId)
-//            }
             }
         }
     }
@@ -396,12 +394,36 @@ private fun register(
     auth.createUserWithEmailAndPassword(email, password)
         .addOnCompleteListener { task ->
             if (task.isSuccessful) {
-                callback(true, null)
+                val userId = auth.currentUser?.uid ?: return@addOnCompleteListener
+                val firestore = Firebase.firestore
+
+                val user = UserProfile(
+                    name = "",
+                    email = email,
+                    registrationDate = System.currentTimeMillis().toString(),
+                    surname = "",
+                    country = "",
+                    city = "",
+                    birthDate = "",
+                    sex = "",
+                    phone = "",
+                    status = ""
+                )
+
+                firestore.collection("users").document(userId)
+                    .set(user)
+                    .addOnSuccessListener {
+                        callback(true, null)
+                    }
+                    .addOnFailureListener { exception ->
+                        callback(false, exception.message)
+                    }
             } else {
                 callback(false, task.exception?.message)
             }
         }
 }
+
 
 @Composable
 fun FavoritesScreen(auth: FirebaseAuth) {
@@ -459,12 +481,34 @@ private fun removeFromFavorites(firestore: FirebaseFirestore, userId: String, ob
         }
 }
 
+fun formatDate(timestamp: String): String {
+    return try {
+        val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+        val date = Date(timestamp.toLong())
+        sdf.format(date)
+    } catch (e: Exception) {
+        "Неверная дата"
+    }
+}
+
+fun updateUserField(firestore: FirebaseFirestore, userId: String, fieldName: String, value: String) {
+    firestore.collection("users").document(userId)
+        .update(fieldName, value)
+        .addOnSuccessListener { println("$fieldName обновлено успешно") }
+        .addOnFailureListener { println("Ошибка обновления $fieldName: ${it.message}") }
+}
+
+fun parseDate(dateString: String): String {
+    return SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).toString()
+}
+
 @Composable
 fun UserProfileScreen(auth: FirebaseAuth) {
     val firestore = Firebase.firestore
     val userId = auth.currentUser?.uid ?: return
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(Unit) {
         firestore.collection("users").document(userId).get()
@@ -488,20 +532,47 @@ fun UserProfileScreen(auth: FirebaseAuth) {
     } else {
         userProfile?.let { profile ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    ProfileField("Имя", profile.name)
-                    ProfileField("Дата рождения", profile.birthDate)
+                    EditableProfileField("Имя", profile.name) { newValue ->
+                        userProfile = userProfile?.copy(name = newValue)
+                        updateUserField(firestore, userId, "name", newValue)
+                    }
+                    EditableProfileField("Фамилия", profile.surname) { newValue ->
+                        userProfile = userProfile?.copy(surname = newValue)
+                        updateUserField(firestore, userId, "surname", newValue)
+                    }
                     ProfileField("Email", profile.email)
-                    ProfileField("Телефон", profile.phone)
-                    ProfileField("Город", profile.city)
-                    ProfileField("Описание", profile.description)
-                    ProfileField("Страна", profile.country)
-                    ProfileField("Пол", profile.gender)
-                    ProfileField("Зарегистрирован", profile.registrationDate)
-                    ProfileField("Активность", profile.lastActiveDate)
+                    EditableProfileField("Страна", profile.country) { newValue ->
+                        userProfile = userProfile?.copy(country = newValue)
+                        updateUserField(firestore, userId, "country", newValue)
+                    }
+                    EditableProfileField("Город", profile.city) { newValue ->
+                        userProfile = userProfile?.copy(city = newValue)
+                        updateUserField(firestore, userId, "city", newValue)
+                    }
+                    ProfileField("Дата регистрации", formatDate(profile.registrationDate))
+                    EditableProfileField("Дата рождения", formatDate(profile.birthDate)) { newValue ->
+                        userProfile = userProfile?.copy(birthDate = parseDate(newValue))
+                        updateUserField(firestore, userId, "birthDate", newValue)
+                    }
+                    EditableProfileField("Пол", profile.sex) { newValue ->
+                        userProfile = userProfile?.copy(sex = newValue)
+                        updateUserField(firestore, userId, "sex", newValue)
+                    }
+                    EditableProfileField("Телефон", profile.phone) { newValue ->
+                        userProfile = userProfile?.copy(phone = newValue)
+                        updateUserField(firestore, userId, "phone", newValue)
+                    }
+                    EditableProfileField("Описание", profile.status) { newValue ->
+                        userProfile = userProfile?.copy(status = newValue)
+                        updateUserField(firestore, userId, "status", newValue)
+                    }
                 }
 
                 Button(
@@ -516,14 +587,53 @@ fun UserProfileScreen(auth: FirebaseAuth) {
 }
 
 @Composable
+fun EditableProfileField(label: String, value: String?, onValueChange: (String) -> Unit) {
+    var isEditing by remember { mutableStateOf(false) }
+    var editableValue by remember { mutableStateOf(value ?: "") }
+
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Text(text = label, style = MaterialTheme.typography.titleSmall)
+
+        if (isEditing) {
+            OutlinedTextField(
+                value = editableValue,
+                onValueChange = { editableValue = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = {
+                        onValueChange(editableValue)
+                        isEditing = false
+                    }) {
+                        Icon(Icons.Default.Check, contentDescription = "Сохранить")
+                    }
+                }
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (value.isNullOrEmpty()) "Не указано" else value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { isEditing = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Редактировать")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ProfileField(label: String, value: String?) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(text = label, style = MaterialTheme.typography.titleSmall)
         Text(
-            text = value ?: "Не указано",
+            text = if (value.isNullOrEmpty()) "Не указано" else value,
             style = MaterialTheme.typography.bodyMedium
         )
     }
 }
-
-
