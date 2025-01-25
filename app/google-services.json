@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "622035352262",
+    "firebase_url": "https://animeshop-31ff6-default-rtdb.firebaseio.com",
+    "project_id": "animeshop-31ff6",
+    "storage_bucket": "animeshop-31ff6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:622035352262:android:e2c5f524519940386eb5c7",
+        "android_client_info": {
+          "package_name": "com.example.animeshop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwbpGMgLXv_pm0m1tNGMdq9S_FwFKbso8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:622035352262:android:67472ecaf44999e16eb5c7",
+        "android_client_info": {
+          "package_name": "com.example.shop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwbpGMgLXv_pm0m1tNGMdq9S_FwFKbso8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
