@@ -10,6 +10,8 @@ data class UserProfile(
     val country: String = "",
     val status: String = "",
     val sex: String = "",
-    val city: String = ""
+    val city: String = "",
+    val favorites: List<String> = emptyList()
+
 )
 

@@ -26,11 +26,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.text.style.TextOverflow
+import com.google.firebase.firestore.FieldPath
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import java.text.SimpleDateFormat
@@ -70,10 +73,11 @@ class MainActivity : ComponentActivity() {
 
 
     @Composable
-    fun ObjectDetailsScreen(objectId: String) {
+    fun ObjectDetailsScreen(objectId: String, userId: String) {
         val firestore = Firebase.firestore
         var anime by remember { mutableStateOf<Anime?>(null) }
         var isLoading by remember { mutableStateOf(true) }
+        var isFavorite by remember { mutableStateOf(false) }
 
         LaunchedEffect(objectId) {
             firestore.collection("anime").document(objectId).get()
@@ -85,6 +89,14 @@ class MainActivity : ComponentActivity() {
                 }
                 .addOnFailureListener {
                     isLoading = false
+                }
+        }
+
+        LaunchedEffect(userId, objectId) {
+            firestore.collection("users").document(userId).get()
+                .addOnSuccessListener { document ->
+                    val userFavorites = document.get("favorites") as? List<String>
+                    isFavorite = userFavorites?.contains(objectId) == true
                 }
         }
 
@@ -125,22 +137,36 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
                     Button(
                         onClick = {
-                            firestore.collection("anime").document(obj.id)
-                                .update("isFavorite", !obj.isFavorite)
-                                .addOnSuccessListener {
-                                    obj.isFavorite = !obj.isFavorite
+                            if (!isFavorite) {
+                                addToFavorites(userId, objectId, firestore) {
+                                    isFavorite = true
                                 }
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isFavorite
                     ) {
-                        Text(if (obj.isFavorite) "Удалить из избранного" else "Добавить в избранное")
+                        Text(
+                            text = if (isFavorite) "Уже в избранном" else "Добавить в избранное"
+                        )
                     }
                 }
             }
         }
+    }
+
+    private fun addToFavorites(userId: String, animeId: String, firestore: FirebaseFirestore, onSuccess: () -> Unit) {
+        val userRef = firestore.collection("users").document(userId)
+        userRef.update("favorites", FieldValue.arrayUnion(animeId))
+            .addOnSuccessListener {
+                println("Аниме добавлено в избранное!")
+                onSuccess()
+            }
+            .addOnFailureListener { exception ->
+                println("Ошибка при добавлении в избранное: ${exception.message}")
+            }
     }
 
     @Composable
@@ -185,14 +211,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 composable("favorites") {
-                    FavoritesScreen(auth)
+                    FavoritesScreen(auth, navController)
                 }
                 composable("profile") {
                     UserProfileScreen(auth)
                 }
                 composable("objectDetails/{objectId}") { backStackEntry ->
                     val objectId = backStackEntry.arguments?.getString("objectId") ?: ""
-                    ObjectDetailsScreen(objectId)
+                    val userId = auth.currentUser?.uid.orEmpty()
+                    ObjectDetailsScreen(objectId, userId)
                 }
             }
             }
@@ -221,75 +248,75 @@ fun BottomNavigationBar(navController: NavController) {
 
 
 @Composable
-    fun ObjectListScreen(auth: FirebaseAuth, onObjectClick: (String) -> Unit) {
-        val firestore = Firebase.firestore
-        var objects by remember { mutableStateOf<List<Anime>>(emptyList()) }
-        var isLoading by remember { mutableStateOf(true) }
+fun ObjectListScreen(auth: FirebaseAuth, onObjectClick: (String) -> Unit) {
+    val firestore = Firebase.firestore
+    var objects by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-        LaunchedEffect(Unit) {
-            firestore.collection("anime").get()
-                .addOnSuccessListener { querySnapshot ->
-                    val fetchedObjects = querySnapshot.documents.mapNotNull { document ->
-                        document.toObject(Anime::class.java)?.apply {
-                            id = document.id
-                        }
+    LaunchedEffect(Unit) {
+        firestore.collection("anime").get()
+            .addOnSuccessListener { querySnapshot ->
+                val fetchedObjects = querySnapshot.documents.mapNotNull { document ->
+                    document.toObject(Anime::class.java)?.apply {
+                        id = document.id
                     }
-                    objects = fetchedObjects
-                    isLoading = false
                 }
-                .addOnFailureListener { exception ->
-                    println("Ошибка получения данных: ${exception.message}")
-                    isLoading = false
-                }
-        }
-
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
+                objects = fetchedObjects
+                isLoading = false
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(8.dp)
-            ) {
-                items(objects) { obj ->
-                    ObjectItem(obj, onClick = { onObjectClick(obj.id) })
-                    Divider()
-                }
+            .addOnFailureListener { exception ->
+                println("Ошибка получения данных: ${exception.message}")
+                isLoading = false
+            }
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(8.dp)
+        ) {
+            items(objects) { obj ->
+                ObjectItem(obj, onClick = { onObjectClick(obj.id) })
+                Divider()
             }
         }
     }
+}
 
-    @Composable
-    fun ObjectItem(obj: Anime, onClick: () -> Unit) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-                .clickable { onClick() },
-            elevation = CardDefaults.cardElevation(4.dp)
+@Composable
+fun ObjectItem(obj: Anime, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .clickable { onClick() },
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = obj.name,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = obj.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = obj.name,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = obj.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
+    }
     }
 
 @Composable
@@ -426,24 +453,36 @@ private fun register(
 
 
 @Composable
-fun FavoritesScreen(auth: FirebaseAuth) {
+fun FavoritesScreen(auth: FirebaseAuth, navController: NavController) {
     val userId = auth.currentUser?.uid ?: return
     val firestore = Firebase.firestore
     var favoriteObjects by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        firestore.collection("users").document(userId).collection("favorites").get()
-            .addOnSuccessListener { querySnapshot ->
-                favoriteObjects = querySnapshot.documents.mapNotNull { document ->
-                    document.toObject(Anime::class.java)?.apply {
-                        id = document.id
-                    }
+        firestore.collection("users").document(userId).get()
+            .addOnSuccessListener { document ->
+                val favorites = document.get("favorites") as? List<String> ?: emptyList()
+                if (favorites.isNotEmpty()) {
+                    firestore.collection("anime").whereIn(FieldPath.documentId(), favorites).get()
+                        .addOnSuccessListener { querySnapshot ->
+                            favoriteObjects = querySnapshot.documents.mapNotNull { doc ->
+                                doc.toObject(Anime::class.java)?.apply {
+                                    id = doc.id
+                                }
+                            }
+                            isLoading = false
+                        }
+                        .addOnFailureListener { exception ->
+                            println("Ошибка загрузки аниме: ${exception.message}")
+                            isLoading = false
+                        }
+                } else {
+                    isLoading = false
                 }
-                isLoading = false
             }
             .addOnFailureListener { exception ->
-                println("Ошибка получения избранного: ${exception.message}")
+                println("Ошибка загрузки избранного: ${exception.message}")
                 isLoading = false
             }
     }
@@ -460,35 +499,60 @@ fun FavoritesScreen(auth: FirebaseAuth) {
             modifier = Modifier.fillMaxSize().padding(8.dp)
         ) {
             items(favoriteObjects) { obj ->
-                ObjectItem(obj, onClick = {
-                    removeFromFavorites(firestore, userId, obj.id)
-                    favoriteObjects = favoriteObjects.filter { it.id != obj.id }
-                })
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            navController.navigate("objectDetails/${obj.id}")
+                        }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = obj.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = obj.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            removeFromFavorites(firestore, userId, obj.id)
+                            favoriteObjects = favoriteObjects.filter { it.id != obj.id }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Удалить из избранного"
+                        )
+                    }
+                }
                 Divider()
             }
         }
     }
 }
 
-private fun removeFromFavorites(firestore: FirebaseFirestore, userId: String, objectId: String) {
-    firestore.collection("users").document(userId).collection("favorites").document(objectId)
-        .delete()
+fun removeFromFavorites(firestore: FirebaseFirestore, userId: String, animeId: String) {
+    val userRef = firestore.collection("users").document(userId)
+    userRef.update("favorites", FieldValue.arrayRemove(animeId))
         .addOnSuccessListener {
-            Log.d("Favorites", "Объект удален из избранного: $objectId")
+            println("Удалено из избранного: $animeId")
         }
         .addOnFailureListener { exception ->
-            Log.e("Favorites", "Ошибка удаления из избранного: ${exception.message}")
+            println("Ошибка удаления: ${exception.message}")
         }
 }
 
 fun formatDate(timestamp: String): String {
-    return try {
-        val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+    val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+    if (timestamp.isNotEmpty()) {
         val date = Date(timestamp.toLong())
-        sdf.format(date)
-    } catch (e: Exception) {
-        "Неверная дата"
+        return sdf.format(date)
     }
+    return ""
 }
 
 fun updateUserField(firestore: FirebaseFirestore, userId: String, fieldName: String, value: String) {

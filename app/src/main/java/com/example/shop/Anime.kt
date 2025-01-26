@@ -5,5 +5,4 @@ data class Anime(
     val name: String = "",
     val description: String = "",
     val images: List<String> = emptyList(),
-    var isFavorite: Boolean = false
 )
