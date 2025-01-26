@@ -1,9 +1,9 @@
 package com.example.shop
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +31,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
@@ -39,6 +42,16 @@ import com.google.firebase.ktx.Firebase
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.window.Dialog
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import coil.size.Scale
+
+
 
 
 class MainActivity : ComponentActivity() {
@@ -48,8 +61,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         auth.addAuthStateListener { firebaseAuth ->
-            if (firebaseAuth.currentUser == null)
-            {
+            if (firebaseAuth.currentUser == null) {
                 setContent {
                     ShopTheme {
                         AuthenticationScreen(auth = auth) { user ->
@@ -62,6 +74,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
 
     private fun navigateToHomeScreen() {
         setContent {
@@ -171,21 +184,78 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun ImageCard(imageUrl: String) {
+        var isDialogOpen by remember { mutableStateOf(false) } // Состояние для диалога
+
         Card(
             modifier = Modifier
                 .size(150.dp)
-                .padding(8.dp),
+                .padding(8.dp)
+                .clickable { isDialogOpen = true }, // Открытие диалога при клике
             elevation = CardDefaults.cardElevation(4.dp)
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Image")
+                val painter = rememberAsyncImagePainter(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .scale(Scale.FILL)
+                        .build()
+                )
+
+                Image(
+                    painter = painter,
+                    contentDescription = "Image",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+
+        if (isDialogOpen) {
+            Dialog(
+                onDismissRequest = { isDialogOpen = false }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column {
+                            val painter = rememberAsyncImagePainter(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(imageUrl)
+                                    .crossfade(true)
+                                    .scale(Scale.FILL)
+                                    .build()
+                            )
+                            Image(
+                                painter = painter,
+                                contentDescription = "Enlarged Image",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { isDialogOpen = false },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("Закрыть")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -194,7 +264,7 @@ class MainActivity : ComponentActivity() {
 
         Scaffold(
             topBar = {
-                TopAppBar(title = { Text("Shop App") })
+                TopAppBar(title = { Text("Anime app") })
             },
             bottomBar = {
                 BottomNavigationBar(navController)
@@ -572,6 +642,7 @@ fun UserProfileScreen(auth: FirebaseAuth) {
     val userId = auth.currentUser?.uid ?: return
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     LaunchedEffect(Unit) {
@@ -639,16 +710,77 @@ fun UserProfileScreen(auth: FirebaseAuth) {
                     }
                 }
 
-                Button(
-                    onClick = { auth.signOut() },
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Выйти из системы")
+                    Button(
+                        onClick = { auth.signOut() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Выйти из системы")
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = { showDeleteDialog = true },
+                        colors = ButtonDefaults.buttonColors(Color.Red),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Удалить аккаунт", color = Color.White)
+                    }
                 }
             }
         } ?: Text("Профиль не найден", modifier = Modifier.fillMaxSize())
     }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Удаление аккаунта") },
+            text = { Text("Вы уверены, что хотите удалить аккаунт? Это действие необратимо.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        deleteAccount(auth, firestore, userId) { success ->
+                            if (success) {
+                                showDeleteDialog = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(Color.Red)
+                ) {
+                    Text("Удалить", color = Color.White)
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
 }
+
+fun deleteAccount(auth: FirebaseAuth, firestore: FirebaseFirestore, userId: String, onResult: (Boolean) -> Unit) {
+    val currentUser = auth.currentUser
+    if (currentUser != null) {
+        firestore.collection("users").document(userId).delete()
+            .addOnSuccessListener {
+                currentUser.delete()
+                    .addOnCompleteListener { task ->
+                        onResult(task.isSuccessful)
+                    }
+            }
+            .addOnFailureListener {
+                onResult(false)
+            }
+    } else {
+        onResult(false)
+    }
+}
+
 
 @Composable
 fun EditableProfileField(label: String, value: String?, onValueChange: (String) -> Unit) {
