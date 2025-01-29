@@ -1,4 +1,4 @@
-package com.example.shop
+package com.example.shop.data
 
 data class Anime(
     var id: String = "",

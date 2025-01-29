@@ -1,4 +1,4 @@
-package com.example.shop
+package com.example.shop.data
 
 data class UserProfile(
     val name: String = "",

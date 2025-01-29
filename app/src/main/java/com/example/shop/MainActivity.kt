@@ -29,13 +29,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -44,17 +42,24 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.size.Scale
+import com.example.shop.data.Anime
+import com.example.shop.data.BottomNavItem
+import com.example.shop.data.UserProfile
+import com.example.shop.viewModels.AuthenticationViewModel
+import com.example.shop.viewModels.ObjectListViewModel
+import com.google.firebase.firestore.FieldPath
 
-
-
-
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity()
+{
 
     private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
@@ -64,7 +69,7 @@ class MainActivity : ComponentActivity() {
             if (firebaseAuth.currentUser == null) {
                 setContent {
                     ShopTheme {
-                        AuthenticationScreen(auth = auth) { user ->
+                        AuthenticationScreen(auth = auth) {
                             navigateToHomeScreen()
                         }
                     }
@@ -75,7 +80,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-
     private fun navigateToHomeScreen() {
         setContent {
             ShopTheme {
@@ -84,6 +88,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun HomeScreen(auth: FirebaseAuth) {
+        val navController = rememberNavController()
+        val userId = auth.currentUser?.uid.orEmpty()
+
+        Scaffold(
+            topBar = { TopAppBar(title = { Text("Anime app") }) },
+            bottomBar = { BottomNavigationBar(navController) }
+        ) { paddingValues ->
+            NavHost(
+                navController = navController,
+                startDestination = "objectList",
+                modifier = Modifier.padding(paddingValues)
+            ) {
+                composable("objectList") {
+                    ObjectListScreen { objectId ->
+                        navController.navigate("objectDetails/$objectId")
+                    }
+                }
+                composable("favorites") {
+                    FavoritesScreen(auth, navController)
+                }
+                composable("profile") {
+                    UserProfileScreen(auth)
+                }
+                composable("objectDetails/{objectId}") { backStackEntry ->
+                    val objectId = backStackEntry.arguments?.getString("objectId") ?: ""
+                    ObjectDetailsScreen(objectId, userId)
+                }
+            }
+        }
+    }
 
     @Composable
     fun ObjectDetailsScreen(objectId: String, userId: String) {
@@ -108,7 +145,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(userId, objectId) {
             firestore.collection("users").document(userId).get()
                 .addOnSuccessListener { document ->
-                    val userFavorites = document.get("favorites") as? List<String>
+                    val userFavorites = document.get("favorites") as? List<*>
                     isFavorite = userFavorites?.contains(objectId) == true
                 }
         }
@@ -137,8 +174,8 @@ class MainActivity : ComponentActivity() {
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
-                    Text(text = "Изображения:", style = MaterialTheme.typography.bodyMedium)
 
+                    Text(text = "Изображения:", style = MaterialTheme.typography.bodyMedium)
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -170,28 +207,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun addToFavorites(userId: String, animeId: String, firestore: FirebaseFirestore, onSuccess: () -> Unit) {
+    private fun addToFavorites(
+        userId: String,
+        animeId: String,
+        firestore: FirebaseFirestore,
+        onSuccess: () -> Unit
+    ) {
         val userRef = firestore.collection("users").document(userId)
         userRef.update("favorites", FieldValue.arrayUnion(animeId))
             .addOnSuccessListener {
-                println("Аниме добавлено в избранное!")
                 onSuccess()
             }
-            .addOnFailureListener { exception ->
-                println("Ошибка при добавлении в избранное: ${exception.message}")
+            .addOnFailureListener {
             }
     }
 
     @Composable
     fun ImageCard(imageUrl: String) {
-        var isDialogOpen by remember { mutableStateOf(false) } // Состояние для диалога
+        var isDialogOpen by remember { mutableStateOf(false) }
 
         Card(
             modifier = Modifier
                 .size(150.dp)
                 .padding(8.dp)
-                .clickable { isDialogOpen = true }, // Открытие диалога при клике
-            elevation = CardDefaults.cardElevation(4.dp)
+                .clickable { isDialogOpen = true },
+            elevation = CardDefaults.cardElevation(4.dp),
+            shape = RoundedCornerShape(8.dp)
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -215,41 +256,45 @@ class MainActivity : ComponentActivity() {
         }
 
         if (isDialogOpen) {
-            Dialog(
-                onDismissRequest = { isDialogOpen = false }
+            ImageDialog(imageUrl = imageUrl, onDismiss = { isDialogOpen = false })
+        }
+    }
+
+    @Composable
+    fun ImageDialog(imageUrl: String, onDismiss: () -> Unit) {
+        Dialog(onDismissRequest = onDismiss) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column {
-                            val painter = rememberAsyncImagePainter(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(imageUrl)
-                                    .crossfade(true)
-                                    .scale(Scale.FILL)
-                                    .build()
-                            )
-                            Image(
-                                painter = painter,
-                                contentDescription = "Enlarged Image",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = { isDialogOpen = false },
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
-                            ) {
-                                Text("Закрыть")
-                            }
+                    Column {
+                        val painter = rememberAsyncImagePainter(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(imageUrl)
+                                .crossfade(true)
+                                .scale(Scale.FILL)
+                                .build()
+                        )
+                        Image(
+                            painter = painter,
+                            contentDescription = "Enlarged Image",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) {
+                            Text("Закрыть")
                         }
                     }
                 }
@@ -257,579 +302,473 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    fun HomeScreen(auth: FirebaseAuth) {
-        val navController = rememberNavController()
+    fun BottomNavigationBar(navController: NavController) {
+        val items = listOf(
+            BottomNavItem("objectList", "Список", Icons.AutoMirrored.Filled.List),
+            BottomNavItem("favorites", "Избранное", Icons.Default.Favorite),
+            BottomNavItem("profile", "Профиль", Icons.Default.Person)
+        )
 
-        Scaffold(
-            topBar = {
-                TopAppBar(title = { Text("Anime app") })
-            },
-            bottomBar = {
-                BottomNavigationBar(navController)
+        NavigationBar {
+            items.forEach { item ->
+                NavigationBarItem(
+                    icon = { Icon(item.icon, contentDescription = item.title) },
+                    label = { Text(item.title) },
+                    selected = false,
+                    onClick = { navController.navigate(item.route) }
+                )
             }
-        ) { paddingValues ->
-            NavHost(
-                navController = navController,
-                startDestination = "objectList",
-                modifier = Modifier.padding(paddingValues)
+        }
+    }
+
+    @Composable
+    fun ObjectListScreen(onObjectClick: (String) -> Unit) {
+        val viewModel: ObjectListViewModel = viewModel()
+        val objects = viewModel.objects.value
+        val isLoading = viewModel.isLoading.value
+
+        LaunchedEffect(Unit) {
+            viewModel.loadObjects()
+        }
+
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                composable("objectList") {
-                    ObjectListScreen(auth) { objectId ->
-                        navController.navigate("objectDetails/$objectId")
-                    }
-                }
-                composable("favorites") {
-                    FavoritesScreen(auth, navController)
-                }
-                composable("profile") {
-                    UserProfileScreen(auth)
-                }
-                composable("objectDetails/{objectId}") { backStackEntry ->
-                    val objectId = backStackEntry.arguments?.getString("objectId") ?: ""
-                    val userId = auth.currentUser?.uid.orEmpty()
-                    ObjectDetailsScreen(objectId, userId)
-                }
+                CircularProgressIndicator()
             }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(8.dp)
+            ) {
+                items(objects) { obj ->
+                    ObjectItem(obj, onClick = { onObjectClick(obj.id) })
+                }
             }
         }
     }
 
-@Composable
-fun BottomNavigationBar(navController: NavController) {
-    val items = listOf(
-        BottomNavItem("objectList", "Список", Icons.Default.List),
-        BottomNavItem("favorites", "Избранное", Icons.Default.Favorite),
-        BottomNavItem("profile", "Профиль", Icons.Default.Person)
-    )
-
-    NavigationBar {
-        items.forEach { item ->
-            NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.title) },
-                label = { Text(item.title) },
-                selected = false,
-                onClick = { navController.navigate(item.route) }
-            )
-        }
-    }
-}
-
-
-@Composable
-fun ObjectListScreen(auth: FirebaseAuth, onObjectClick: (String) -> Unit) {
-    val firestore = Firebase.firestore
-    var objects by remember { mutableStateOf<List<Anime>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        firestore.collection("anime").get()
-            .addOnSuccessListener { querySnapshot ->
-                val fetchedObjects = querySnapshot.documents.mapNotNull { document ->
-                    document.toObject(Anime::class.java)?.apply {
-                        id = document.id
-                    }
-                }
-                objects = fetchedObjects
-                isLoading = false
-            }
-            .addOnFailureListener { exception ->
-                println("Ошибка получения данных: ${exception.message}")
-                isLoading = false
-            }
-    }
-
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+    @Composable
+    fun ObjectItem(obj: Anime, onClick: () -> Unit) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .clickable { onClick() },
+            elevation = CardDefaults.cardElevation(4.dp)
         ) {
-            CircularProgressIndicator()
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(8.dp)
-        ) {
-            items(objects) { obj ->
-                ObjectItem(obj, onClick = { onObjectClick(obj.id) })
-                Divider()
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = obj.name,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = obj.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
-}
 
-@Composable
-fun ObjectItem(obj: Anime, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable { onClick() },
-        elevation = CardDefaults.cardElevation(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = obj.name,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = obj.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-    }
-
-@Composable
-fun AuthenticationScreen(auth: FirebaseAuth, onSuccess: (FirebaseAuth) -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
-    var isLogin by remember { mutableStateOf(true) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(text = if (isLogin) "Вход" else "Регистрация", style = MaterialTheme.typography.headlineMedium)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
+    @Composable
+    fun EmailTextField(email: String, onEmailChange: (String) -> Unit) {
         TextField(
             value = email,
-            onValueChange = { email = it },
+            onValueChange = onEmailChange,
             label = { Text("Email") },
             modifier = Modifier.fillMaxWidth()
         )
+    }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
+    @Composable
+    fun PasswordTextField(password: String, onPasswordChange: (String) -> Unit) {
         TextField(
             value = password,
-            onValueChange = { password = it },
+            onValueChange = onPasswordChange,
             label = { Text("Пароль") },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
+    }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
+    @Composable
+    fun AuthenticationButton(isLogin: Boolean, onAuthenticate: () -> Unit) {
         Button(
-            onClick = {
-                if (isLogin) {
-                    login(auth, email, password) { success, error ->
-                        if (success) {
-                            onSuccess(auth)
-                        } else {
-                            message = error ?: "Ошибка входа"
-                        }
-                    }
-                } else {
-                    register(auth, email, password) { success, error ->
-                        if (success) {
-                            message = "Регистрация успешна!"
-                            isLogin = true
-                        } else {
-                            message = error ?: "Ошибка регистрации"
-                        }
-                    }
-                }
-            },
+            onClick = onAuthenticate,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (isLogin) "Войти" else "Зарегистрироваться")
         }
+    }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        TextButton(onClick = { isLogin = !isLogin }) {
+    @Composable
+    fun ToggleLoginButton(isLogin: Boolean, onToggle: () -> Unit) {
+        TextButton(onClick = onToggle) {
             Text(if (isLogin) "Создать аккаунт" else "Уже есть аккаунт? Войти")
         }
+    }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
+    @Composable
+    fun ErrorMessage(message: String) {
         if (message.isNotEmpty()) {
             Text(text = message, color = MaterialTheme.colorScheme.error)
         }
     }
-}
 
-private fun login(
-    auth: FirebaseAuth,
-    email: String,
-    password: String,
-    callback: (Boolean, String?) -> Unit
-) {
-    auth.signInWithEmailAndPassword(email, password)
-        .addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                callback(true, null)
-            } else {
-                callback(false, task.exception?.message)
+    @Composable
+    fun AuthenticationScreen(
+        auth: FirebaseAuth,
+        onSuccess: (FirebaseAuth) -> Unit
+    ) {
+        val viewModel: AuthenticationViewModel = viewModel()
+        val email by viewModel.email
+        val password by viewModel.password
+        val message by viewModel.message
+        val isLogin by viewModel.isLogin
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = if (isLogin) "Вход" else "Регистрация",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            EmailTextField(email, viewModel::onEmailChange)
+            Spacer(modifier = Modifier.height(8.dp))
+            PasswordTextField(password, viewModel::onPasswordChange)
+            Spacer(modifier = Modifier.height(16.dp))
+            AuthenticationButton(isLogin) {
+                viewModel.onAuthenticate(auth) { authResult ->
+                    onSuccess(authResult)
+                }
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            ToggleLoginButton(isLogin, viewModel::onToggleLogin)
+            Spacer(modifier = Modifier.height(16.dp))
+            ErrorMessage(message)
         }
-}
+    }
 
-private fun register(
-    auth: FirebaseAuth,
-    email: String,
-    password: String,
-    callback: (Boolean, String?) -> Unit
-) {
-    auth.createUserWithEmailAndPassword(email, password)
-        .addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val userId = auth.currentUser?.uid ?: return@addOnCompleteListener
-                val firestore = Firebase.firestore
+    @Composable
+    fun FavoritesScreen(auth: FirebaseAuth, navController: NavController) {
+        val userId = auth.currentUser?.uid ?: return
+        val firestore = Firebase.firestore
+        var favoriteObjects by remember { mutableStateOf<List<Anime>>(emptyList()) }
+        var isLoading by remember { mutableStateOf(true) }
 
-                val user = UserProfile(
-                    name = "",
-                    email = email,
-                    registrationDate = System.currentTimeMillis().toString(),
-                    surname = "",
-                    country = "",
-                    city = "",
-                    birthDate = "",
-                    sex = "",
-                    phone = "",
-                    status = ""
-                )
-
-                firestore.collection("users").document(userId)
-                    .set(user)
-                    .addOnSuccessListener {
-                        callback(true, null)
-                    }
-                    .addOnFailureListener { exception ->
-                        callback(false, exception.message)
-                    }
-            } else {
-                callback(false, task.exception?.message)
-            }
-        }
-}
-
-
-@Composable
-fun FavoritesScreen(auth: FirebaseAuth, navController: NavController) {
-    val userId = auth.currentUser?.uid ?: return
-    val firestore = Firebase.firestore
-    var favoriteObjects by remember { mutableStateOf<List<Anime>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        firestore.collection("users").document(userId).get()
-            .addOnSuccessListener { document ->
-                val favorites = document.get("favorites") as? List<String> ?: emptyList()
-                if (favorites.isNotEmpty()) {
-                    firestore.collection("anime").whereIn(FieldPath.documentId(), favorites).get()
-                        .addOnSuccessListener { querySnapshot ->
-                            favoriteObjects = querySnapshot.documents.mapNotNull { doc ->
-                                doc.toObject(Anime::class.java)?.apply {
-                                    id = doc.id
+        LaunchedEffect(Unit) {
+            firestore.collection("users").document(userId).get()
+                .addOnSuccessListener { document ->
+                    val favorites = document.get("favorites") as? List<String> ?: emptyList()
+                    if (favorites.isNotEmpty()) {
+                        firestore.collection("anime").whereIn(FieldPath.documentId(), favorites).get()
+                            .addOnSuccessListener { querySnapshot ->
+                                favoriteObjects = querySnapshot.documents.mapNotNull { doc ->
+                                    doc.toObject(Anime::class.java)?.apply {
+                                        id = doc.id
+                                    }
                                 }
+                                isLoading = false
                             }
-                            isLoading = false
-                        }
-                        .addOnFailureListener { exception ->
-                            println("Ошибка загрузки аниме: ${exception.message}")
-                            isLoading = false
-                        }
-                } else {
+                            .addOnFailureListener { exception ->
+                                println("Ошибка загрузки аниме: ${exception.message}")
+                                isLoading = false
+                            }
+                    } else {
+                        isLoading = false
+                    }
+                }
+                .addOnFailureListener { exception ->
+                    println("Ошибка загрузки избранного: ${exception.message}")
                     isLoading = false
                 }
-            }
-            .addOnFailureListener { exception ->
-                println("Ошибка загрузки избранного: ${exception.message}")
-                isLoading = false
-            }
-    }
-
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(8.dp)
-        ) {
-            items(favoriteObjects) { obj ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            navController.navigate("objectDetails/${obj.id}")
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = obj.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = obj.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            removeFromFavorites(firestore, userId, obj.id)
-                            favoriteObjects = favoriteObjects.filter { it.id != obj.id }
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Удалить из избранного"
-                        )
-                    }
-                }
-                Divider()
-            }
-        }
-    }
-}
 
-fun removeFromFavorites(firestore: FirebaseFirestore, userId: String, animeId: String) {
-    val userRef = firestore.collection("users").document(userId)
-    userRef.update("favorites", FieldValue.arrayRemove(animeId))
-        .addOnSuccessListener {
-            println("Удалено из избранного: $animeId")
-        }
-        .addOnFailureListener { exception ->
-            println("Ошибка удаления: ${exception.message}")
-        }
-}
-
-fun formatDate(timestamp: String): String {
-    val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-    if (timestamp.isNotEmpty()) {
-        val date = Date(timestamp.toLong())
-        return sdf.format(date)
-    }
-    return ""
-}
-
-fun updateUserField(firestore: FirebaseFirestore, userId: String, fieldName: String, value: String) {
-    firestore.collection("users").document(userId)
-        .update(fieldName, value)
-        .addOnSuccessListener { println("$fieldName обновлено успешно") }
-        .addOnFailureListener { println("Ошибка обновления $fieldName: ${it.message}") }
-}
-
-fun parseDate(dateString: String): String {
-    return SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).toString()
-}
-
-@Composable
-fun UserProfileScreen(auth: FirebaseAuth) {
-    val firestore = Firebase.firestore
-    val userId = auth.currentUser?.uid ?: return
-    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
-
-    LaunchedEffect(Unit) {
-        firestore.collection("users").document(userId).get()
-            .addOnSuccessListener { documentSnapshot ->
-                userProfile = documentSnapshot.toObject(UserProfile::class.java)
-                isLoading = false
-            }
-            .addOnFailureListener { exception ->
-                println("Ошибка загрузки профиля: ${exception.message}")
-                isLoading = false
-            }
-    }
-
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
-    } else {
-        userProfile?.let { profile ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-                    .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.SpaceBetween
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Column {
-                    EditableProfileField("Имя", profile.name) { newValue ->
-                        userProfile = userProfile?.copy(name = newValue)
-                        updateUserField(firestore, userId, "name", newValue)
-                    }
-                    EditableProfileField("Фамилия", profile.surname) { newValue ->
-                        userProfile = userProfile?.copy(surname = newValue)
-                        updateUserField(firestore, userId, "surname", newValue)
-                    }
-                    ProfileField("Email", profile.email)
-                    EditableProfileField("Страна", profile.country) { newValue ->
-                        userProfile = userProfile?.copy(country = newValue)
-                        updateUserField(firestore, userId, "country", newValue)
-                    }
-                    EditableProfileField("Город", profile.city) { newValue ->
-                        userProfile = userProfile?.copy(city = newValue)
-                        updateUserField(firestore, userId, "city", newValue)
-                    }
-                    ProfileField("Дата регистрации", formatDate(profile.registrationDate))
-                    EditableProfileField("Дата рождения", formatDate(profile.birthDate)) { newValue ->
-                        userProfile = userProfile?.copy(birthDate = parseDate(newValue))
-                        updateUserField(firestore, userId, "birthDate", newValue)
-                    }
-                    EditableProfileField("Пол", profile.sex) { newValue ->
-                        userProfile = userProfile?.copy(sex = newValue)
-                        updateUserField(firestore, userId, "sex", newValue)
-                    }
-                    EditableProfileField("Телефон", profile.phone) { newValue ->
-                        userProfile = userProfile?.copy(phone = newValue)
-                        updateUserField(firestore, userId, "phone", newValue)
-                    }
-                    EditableProfileField("Описание", profile.status) { newValue ->
-                        userProfile = userProfile?.copy(status = newValue)
-                        updateUserField(firestore, userId, "status", newValue)
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Button(
-                        onClick = { auth.signOut() },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Выйти из системы")
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = { showDeleteDialog = true },
-                        colors = ButtonDefaults.buttonColors(Color.Red),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Удалить аккаунт", color = Color.White)
-                    }
-                }
+                CircularProgressIndicator()
             }
-        } ?: Text("Профиль не найден", modifier = Modifier.fillMaxSize())
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Удаление аккаунта") },
-            text = { Text("Вы уверены, что хотите удалить аккаунт? Это действие необратимо.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        deleteAccount(auth, firestore, userId) { success ->
-                            if (success) {
-                                showDeleteDialog = false
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(8.dp)
+            ) {
+                items(favoriteObjects) { obj ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                navController.navigate("objectDetails/${obj.id}")
                             }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = obj.name, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = obj.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(Color.Red)
-                ) {
-                    Text("Удалить", color = Color.White)
-                }
-            },
-            dismissButton = {
-                Button(onClick = { showDeleteDialog = false }) {
-                    Text("Отмена")
+                        IconButton(
+                            onClick = {
+                                removeFromFavorites(firestore, userId, obj.id)
+                                favoriteObjects = favoriteObjects.filter { it.id != obj.id }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Удалить из избранного"
+                            )
+                        }
+                    }
+                    HorizontalDivider()
                 }
             }
-        )
+        }
     }
-}
 
-fun deleteAccount(auth: FirebaseAuth, firestore: FirebaseFirestore, userId: String, onResult: (Boolean) -> Unit) {
-    val currentUser = auth.currentUser
-    if (currentUser != null) {
-        firestore.collection("users").document(userId).delete()
+    private fun removeFromFavorites(firestore: FirebaseFirestore, userId: String, animeId: String) {
+        val userRef = firestore.collection("users").document(userId)
+        userRef.update("favorites", FieldValue.arrayRemove(animeId))
             .addOnSuccessListener {
-                currentUser.delete()
-                    .addOnCompleteListener { task ->
-                        onResult(task.isSuccessful)
-                    }
             }
             .addOnFailureListener {
-                onResult(false)
             }
-    } else {
-        onResult(false)
     }
-}
 
+    private fun formatDate(timestamp: String): String {
+        val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+        if (timestamp.isNotEmpty()) {
+            val date = Date(timestamp.toLong())
+            return sdf.format(date)
+        }
+        return ""
+    }
 
-@Composable
-fun EditableProfileField(label: String, value: String?, onValueChange: (String) -> Unit) {
-    var isEditing by remember { mutableStateOf(false) }
-    var editableValue by remember { mutableStateOf(value ?: "") }
+    @Composable
+    fun UserProfileScreen(auth: FirebaseAuth) {
+        val firestore = Firebase.firestore
+        val userId = auth.currentUser?.uid ?: return
+        var userProfile by remember { mutableStateOf<UserProfile?>(null) }
+        var isLoading by remember { mutableStateOf(true) }
+        var showDeleteDialog by remember { mutableStateOf(false) }
+        val scrollState = rememberScrollState()
 
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(text = label, style = MaterialTheme.typography.titleSmall)
+        LaunchedEffect(Unit) {
+            firestore.collection("users").document(userId).get()
+                .addOnSuccessListener { documentSnapshot ->
+                    userProfile = documentSnapshot.toObject(UserProfile::class.java)
+                    isLoading = false
+                }
+                .addOnFailureListener { exception ->
+                    println("Ошибка загрузки профиля: ${exception.message}")
+                    isLoading = false
+                }
+        }
 
-        if (isEditing) {
-            OutlinedTextField(
-                value = editableValue,
-                onValueChange = { editableValue = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(onClick = {
-                        onValueChange(editableValue)
-                        isEditing = false
-                    }) {
-                        Icon(Icons.Default.Check, contentDescription = "Сохранить")
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else {
+            userProfile?.let { profile ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        EditableProfileField("Имя", profile.name) { newValue ->
+                            userProfile = userProfile?.copy(name = newValue)
+                            updateUserField(firestore, userId, "name", newValue)
+                        }
+                        EditableProfileField("Фамилия", profile.surname) { newValue ->
+                            userProfile = userProfile?.copy(surname = newValue)
+                            updateUserField(firestore, userId, "surname", newValue)
+                        }
+                        ProfileField("Email", profile.email)
+                        EditableProfileField("Страна", profile.country) { newValue ->
+                            userProfile = userProfile?.copy(country = newValue)
+                            updateUserField(firestore, userId, "country", newValue)
+                        }
+                        EditableProfileField("Город", profile.city) { newValue ->
+                            userProfile = userProfile?.copy(city = newValue)
+                            updateUserField(firestore, userId, "city", newValue)
+                        }
+                        ProfileField("Дата регистрации", formatDate(profile.registrationDate))
+                        EditableProfileField("Дата рождения", formatDate(profile.birthDate)) { newValue ->
+                            userProfile = userProfile?.copy(birthDate = parseDate())
+                            updateUserField(firestore, userId, "birthDate", newValue)
+                        }
+                        EditableProfileField("Пол", profile.sex) { newValue ->
+                            userProfile = userProfile?.copy(sex = newValue)
+                            updateUserField(firestore, userId, "sex", newValue)
+                        }
+                        EditableProfileField("Телефон", profile.phone) { newValue ->
+                            userProfile = userProfile?.copy(phone = newValue)
+                            updateUserField(firestore, userId, "phone", newValue)
+                        }
+                        EditableProfileField("Описание", profile.status) { newValue ->
+                            userProfile = userProfile?.copy(status = newValue)
+                            updateUserField(firestore, userId, "status", newValue)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Button(
+                            onClick = { auth.signOut() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Выйти из системы")
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Button(
+                            onClick = { showDeleteDialog = true },
+                            colors = ButtonDefaults.buttonColors(Color.Red),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Удалить аккаунт", color = Color.White)
+                        }
+                    }
+                }
+            } ?: Text("Профиль не найден", modifier = Modifier.fillMaxSize())
+        }
+
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Удаление аккаунта") },
+                text = { Text("Вы уверены, что хотите удалить аккаунт? Это действие необратимо.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            deleteAccount(auth, firestore, userId) { success ->
+                                if (success) {
+                                    showDeleteDialog = false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(Color.Red)
+                    ) {
+                        Text("Удалить", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    Button(onClick = { showDeleteDialog = false }) {
+                        Text("Отмена")
                     }
                 }
             )
+        }
+    }
+
+    private fun updateUserField(firestore: FirebaseFirestore, userId: String, fieldName: String, value: String) {
+        firestore.collection("users").document(userId)
+            .update(fieldName, value)
+            .addOnSuccessListener { println("$fieldName обновлено успешно") }
+            .addOnFailureListener { println("Ошибка обновления $fieldName: ${it.message}") }
+    }
+
+    private fun parseDate(): String {
+        return SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).toString()
+    }
+
+    private fun deleteAccount(auth: FirebaseAuth, firestore: FirebaseFirestore, userId: String, onResult: (Boolean) -> Unit) {
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            firestore.collection("users").document(userId).delete()
+                .addOnSuccessListener {
+                    currentUser.delete()
+                        .addOnCompleteListener { task ->
+                            onResult(task.isSuccessful)
+                        }
+                }
+                .addOnFailureListener {
+                    onResult(false)
+                }
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (value.isNullOrEmpty()) "Не указано" else value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f)
+            onResult(false)
+        }
+    }
+
+    @Composable
+    fun EditableProfileField(label: String, value: String?, onValueChange: (String) -> Unit) {
+        var isEditing by remember { mutableStateOf(false) }
+        var editableValue by remember { mutableStateOf(value ?: "") }
+
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Text(text = label, style = MaterialTheme.typography.titleSmall)
+
+            if (isEditing) {
+                OutlinedTextField(
+                    value = editableValue,
+                    onValueChange = { editableValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            onValueChange(editableValue)
+                            isEditing = false
+                        }) {
+                            Icon(Icons.Default.Check, contentDescription = "Сохранить")
+                        }
+                    }
                 )
-                IconButton(onClick = { isEditing = true }) {
-                    Icon(Icons.Default.Edit, contentDescription = "Редактировать")
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (value.isNullOrEmpty()) "Не указано" else value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { isEditing = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Редактировать")
+                    }
                 }
             }
         }
     }
-}
 
-@Composable
-fun ProfileField(label: String, value: String?) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(text = label, style = MaterialTheme.typography.titleSmall)
-        Text(
-            text = if (value.isNullOrEmpty()) "Не указано" else value,
-            style = MaterialTheme.typography.bodyMedium
-        )
+    @Composable
+    fun ProfileField(label: String, value: String?) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Text(text = label, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = if (value.isNullOrEmpty()) "Не указано" else value,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }

@@ -1,4 +1,4 @@
-package com.example.shop
+package com.example.shop.data
 
 import androidx.compose.ui.graphics.vector.ImageVector
 
