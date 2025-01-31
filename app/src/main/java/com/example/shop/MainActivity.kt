@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,10 +43,15 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
@@ -88,14 +94,13 @@ class MainActivity : ComponentActivity()
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun HomeScreen(auth: FirebaseAuth) {
         val navController = rememberNavController()
         val userId = auth.currentUser?.uid.orEmpty()
 
         Scaffold(
-            topBar = { TopAppBar(title = { Text("Anime app") }) },
+            topBar = { CustomTopAppBar() },
             bottomBar = { BottomNavigationBar(navController) }
         ) { paddingValues ->
             NavHost(
@@ -120,6 +125,27 @@ class MainActivity : ComponentActivity()
                 }
             }
         }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun CustomTopAppBar() {
+        TopAppBar(
+            title = {
+                Text(
+                    text = "Anime App",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    ),
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        )
     }
 
     @Composable
@@ -270,15 +296,15 @@ class MainActivity : ComponentActivity()
                 contentAlignment = Alignment.Center
             ) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = CardDefaults.cardElevation(8.dp)
                 ) {
-                    Column {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         val painter = rememberAsyncImagePainter(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(imageUrl)
                                 .crossfade(true)
-                                .scale(Scale.FILL)
                                 .build()
                         )
                         Image(
@@ -286,13 +312,16 @@ class MainActivity : ComponentActivity()
                             contentDescription = "Enlarged Image",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(8.dp),
-                            contentScale = ContentScale.Fit
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             onClick = onDismiss,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .fillMaxWidth(0.6f)
                         ) {
                             Text("Закрыть")
                         }
@@ -301,6 +330,7 @@ class MainActivity : ComponentActivity()
             }
         }
     }
+
 
     @Composable
     fun BottomNavigationBar(navController: NavController) {
@@ -359,26 +389,49 @@ class MainActivity : ComponentActivity()
                 .clickable { onClick() },
             elevation = CardDefaults.cardElevation(4.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = obj.name,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = obj.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                val painter = rememberAsyncImagePainter(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(obj.images[0])
+                        .crossfade(true)
+                        .scale(Scale.FILL)
+                        .build()
+                )
+
+                Image(
+                    painter = painter,
+                    contentDescription = "Anime Image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = obj.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = obj.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
+
 
     @Composable
     fun EmailTextField(email: String, onEmailChange: (String) -> Unit) {
@@ -484,16 +537,14 @@ class MainActivity : ComponentActivity()
                                 }
                                 isLoading = false
                             }
-                            .addOnFailureListener { exception ->
-                                println("Ошибка загрузки аниме: ${exception.message}")
+                            .addOnFailureListener {
                                 isLoading = false
                             }
                     } else {
                         isLoading = false
                     }
                 }
-                .addOnFailureListener { exception ->
-                    println("Ошибка загрузки избранного: ${exception.message}")
+                .addOnFailureListener {
                     isLoading = false
                 }
         }
@@ -507,44 +558,73 @@ class MainActivity : ComponentActivity()
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(8.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
             ) {
                 items(favoriteObjects) { obj ->
-                    Row(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                navController.navigate("objectDetails/${obj.id}")
-                            }
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(8.dp)
+                            .clickable { navController.navigate("objectDetails/${obj.id}") },
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(8.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = obj.name, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = obj.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                        Box {
+                            val painter = rememberAsyncImagePainter(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(obj.images[0])
+                                    .crossfade(true)
+                                    .build()
                             )
-                        }
-                        IconButton(
-                            onClick = {
-                                removeFromFavorites(firestore, userId, obj.id)
-                                favoriteObjects = favoriteObjects.filter { it.id != obj.id }
+
+                            Image(
+                                painter = painter,
+                                contentDescription = obj.name,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    removeFromFavorites(firestore, userId, obj.id)
+                                    favoriteObjects = favoriteObjects.filter { it.id != obj.id }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Удалить из избранного",
+                                    tint = Color.White
+                                )
                             }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Удалить из избранного"
+                            Text(
+                                text = obj.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
-                    HorizontalDivider()
                 }
             }
         }
     }
+
 
     private fun removeFromFavorites(firestore: FirebaseFirestore, userId: String, animeId: String) {
         val userRef = firestore.collection("users").document(userId)
